@@ -1,0 +1,45 @@
+{
+  "fontes": {
+    "metabase": {
+      "frequencia": "semanal",
+      "dia_semana": "segunda",
+      "hora": "06:00",
+      "timeout": 25,
+      "max_retries": 3,
+      "delay_entre_cards": 0.3,
+      "habilitado": true
+    },
+    "google_sheets": {
+      "frequencia": "semanal",
+      "dia_semana": "quarta",
+      "hora": "06:00",
+      "timeout": 45,
+      "max_retries": 3,
+      "habilitado": true
+    }
+  },
+  "frequencias_por_fonte": {
+    "gsheet_acidentes_transito": {
+      "frequencia": "mensal",
+      "observacao": "INFOSIGA-SP atualiza mensalmente"
+    },
+    "gsheet_saude_atencao_basica_sisab": {
+      "frequencia": "mensal",
+      "observacao": "SISAB publica competências mensais"
+    },
+    "gsheet_pesquisa_restaurante_popular": {
+      "frequencia": "manual",
+      "observacao": "Pesquisa pontual, sem periodicidade definida"
+    }
+  },
+  "geral": {
+    "diretorio_dados": "data/raw",
+    "diretorio_processados": "data/processed",
+    "diretorio_historico": "data/history",
+    "diretorio_logs": "logs",
+    "diretorio_relatorios": "reports",
+    "max_execucoes_concorrentes": 1,
+    "reter_historico_dias": 90,
+    "lockfile": "data/.lock_coleta"
+  }
+}

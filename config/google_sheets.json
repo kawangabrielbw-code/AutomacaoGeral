@@ -1,0 +1,29 @@
+[
+  {
+    "id": "acidentes_transito",
+    "name": "Sinistros de Trânsito em Diadema (INFOSIGA-SP)",
+    "url": "https://docs.google.com/spreadsheets/d/1IbVP_n2rCMDrLiQArlqixhGcuTUL8jqhsskpUVIr-QY/edit?usp=sharing",
+    "sheet_id": "1IbVP_n2rCMDrLiQArlqixhGcuTUL8jqhsskpUVIr-QY",
+    "gid": "0",
+    "categoria": "OPPES Indicadores",
+    "fonte_primaria": "INFOSIGA-SP (Detran-SP / Respeito à Vida)"
+  },
+  {
+    "id": "saude_atencao_basica_sisab",
+    "name": "Produção da Atenção Básica de Saúde SISAB",
+    "url": "https://docs.google.com/spreadsheets/d/1FRXI-muwyjka7FUK-TG47qJ3dPjJlo-8pIsQDL1a2jw/edit?usp=sharing",
+    "sheet_id": "1FRXI-muwyjka7FUK-TG47qJ3dPjJlo-8pIsQDL1a2jw",
+    "gid": "0",
+    "categoria": "OPPES Indicadores",
+    "fonte_primaria": "Ministério da Saúde (SISAB / SAPS)"
+  },
+  {
+    "id": "pesquisa_restaurante_popular",
+    "name": "Pesquisa de Satisfação - Restaurante Popular",
+    "url": "https://docs.google.com/spreadsheets/d/1yrDtIFcbxtVgen0OOMcvV_mK0G4c52El/edit?usp=drive_link",
+    "sheet_id": "1yrDtIFcbxtVgen0OOMcvV_mK0G4c52El",
+    "gid": "0",
+    "categoria": "Acervo e Downloads",
+    "fonte_primaria": "Prefeitura de Diadema (SASC / SEPLAGE)"
+  }
+]
