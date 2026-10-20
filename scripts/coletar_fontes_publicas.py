@@ -24,6 +24,8 @@ def main() -> int:
     collect = sub.add_parser("collect", help="Coleta um recurso configurado ou uma URL direta autorizada.")
     collect.add_argument("source_id")
     collect.add_argument("--url", help="URL direta pública do arquivo/API; não use URL de página de apresentação.")
+    discover = sub.add_parser("discover", help="Descobre URLs de recursos públicos sem baixar os arquivos.")
+    discover.add_argument("source_id", nargs="?", help="ID opcional de uma fonte específica; sem ID, verifica todas.")
     hist = sub.add_parser("history", help="Exibe o histórico de execuções.")
     hist.add_argument("--limit", type=int, default=50)
     args = parser.parse_args()
@@ -35,6 +37,10 @@ def main() -> int:
         return 0
     if args.command == "history":
         print(json.dumps(pipeline.history(args.limit), ensure_ascii=False, indent=2))
+        return 0
+    if args.command == "discover":
+        results = pipeline.discover(args.source_id)
+        print(json.dumps(results, ensure_ascii=False, indent=2))
         return 0
     result = pipeline.run(args.source_id, args.url)
     print(json.dumps(result.__dict__, ensure_ascii=False, indent=2))
