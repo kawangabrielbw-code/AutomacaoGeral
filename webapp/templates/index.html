@@ -1,0 +1,12 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>OPPES | Observatório de Diadema</title><link rel="stylesheet" href="/static/app.css"><script defer src="/static/app.js"></script></head>
+<body data-section="{{ section }}"><div class="shell">
+<aside class="sidebar"><a class="brand" href="/dashboard"><span class="brand-mark">O</span><span><b>OPPES</b><small>Observatório de Diadema</small></span></a>
+<nav aria-label="Navegação principal"><a href="/dashboard" data-nav="dashboard"><span>▦</span>Dashboard</a><a href="/sources" data-nav="sources"><span>◫</span>Fontes</a><a href="/collections" data-nav="collections"><span>↻</span>Coletas</a><a href="/exports" data-nav="exports"><span>?</span>Google Sheets Central</a><a href="/history" data-nav="history"><span>◷</span>Histórico</a><a href="/settings" data-nav="settings"><span>⚙</span>Configurações</a></nav>
+<div class="sidebar-bottom"><span class="live-dot"></span><span>Sistema local</span><button id="logout" class="text-button">Sair</button></div></aside>
+<main class="main"><header class="topbar"><div><p class="eyebrow">OPERAÇÃO DE DADOS</p><h1 id="page-title">{{ section }}</h1></div><div class="top-actions"><span id="server-clock" class="muted"></span><button id="refresh" class="button secondary">Atualizar</button></div></header>
+<section id="page-content" class="content" aria-live="polite"><div class="loading">Carregando informações...</div></section>
+<footer class="footer">Dados consultados do catálogo local e do histórico SQLite. Horários apresentados em UTC quando identificados como UTC.</footer></main></div>
+<dialog id="confirm-dialog"><form method="dialog" class="dialog-card"><button class="dialog-close" value="cancel" aria-label="Fechar">×</button><p class="eyebrow">CONFIRMAÇÃO</p><h2 id="confirm-title">Confirmar operação</h2><p id="confirm-description" class="muted"></p><div class="dialog-actions"><button class="button secondary" value="cancel">Cancelar</button><button id="confirm-yes" class="button primary" value="confirm">Confirmar</button></div></form></dialog>
+</body></html>

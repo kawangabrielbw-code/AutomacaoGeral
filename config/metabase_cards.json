@@ -1,0 +1,4 @@
+{
+  "cards": {},
+  "observacao": "Configure somente cards com periodicidade oficial ou decisão operacional documentada. A chave é dashboard_uuid:card_id; cards sem configuração ficam manuais e não são coletados por --vencidas."
+}

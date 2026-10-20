@@ -9,9 +9,12 @@ permitindo controle de frequência, recuperação de falhas e auditoria.
 from __future__ import annotations
 
 import csv
+import calendar
 import json
 import logging
 import os
+import sqlite3
+from contextlib import contextmanager
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -42,6 +45,105 @@ class ExecutionHistory:
         self.history_dir.mkdir(parents=True, exist_ok=True)
         self.history_file = self.history_dir / "execucoes.json"
         self.log_file = self.history_dir / "execucoes.csv"
+        self.db_file = self.history_dir / "historico.sqlite3"
+        with self._connect() as db:
+            db.execute("""CREATE TABLE IF NOT EXISTS execucoes (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, execucao_id TEXT NOT NULL,
+                fonte_tipo TEXT, fonte_id TEXT NOT NULL, data_inicio_utc TEXT NOT NULL,
+                data_fim_utc TEXT NOT NULL, status TEXT NOT NULL,
+                linhas_coletadas INTEGER DEFAULT 0, colunas INTEGER DEFAULT 0,
+                duracao_segundos REAL DEFAULT 0, mensagem TEXT, arquivo_csv TEXT,
+                hash_sha256 TEXT, alteracao TEXT)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS fontes (
+                fonte_id TEXT PRIMARY KEY, fonte_tipo TEXT NOT NULL, frequencia TEXT NOT NULL,
+                ultima_tentativa_utc TEXT, ultima_atualizacao_sucesso_utc TEXT,
+                proxima_execucao_utc TEXT)""")
+            db.execute("""CREATE TABLE IF NOT EXISTS operacoes_web (
+                id TEXT PRIMARY KEY, operacao TEXT NOT NULL, alvo TEXT, status TEXT NOT NULL,
+                inicio_utc TEXT NOT NULL, fim_utc TEXT, duracao_segundos REAL,
+                resultado_json TEXT, mensagem_erro TEXT)""")
+            db.execute("""INSERT OR IGNORE INTO fontes
+                (fonte_id,fonte_tipo,frequencia,ultima_tentativa_utc,ultima_atualizacao_sucesso_utc,proxima_execucao_utc)
+                SELECT e.fonte_id, MAX(e.fonte_tipo), 'manual', MAX(e.data_fim_utc),
+                    (SELECT s.data_fim_utc FROM execucoes s WHERE s.fonte_id=e.fonte_id
+                     AND s.status IN ('SUCESSO','VAZIO') ORDER BY s.id DESC LIMIT 1), NULL
+                FROM execucoes e GROUP BY e.fonte_id""")
+
+    @contextmanager
+    def _connect(self):
+        db = sqlite3.connect(self.db_file, timeout=30)
+        try:
+            yield db
+            db.commit()
+        finally:
+            db.close()
+
+    def _sync_sqlite(self, record: Dict[str, Any]) -> None:
+        with self._connect() as db:
+            db.execute("""INSERT INTO execucoes
+                (execucao_id,fonte_tipo,fonte_id,data_inicio_utc,data_fim_utc,status,
+                linhas_coletadas,colunas,duracao_segundos,mensagem,arquivo_csv,hash_sha256,alteracao)
+                VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)""", tuple(record.get(k) for k in (
+                "execucao_id","fonte_tipo","fonte_id","data_inicio_utc","data_fim_utc","status",
+                "linhas_coletadas","colunas","duracao_segundos","mensagem","arquivo_csv","hash_sha256","alteracao")))
+
+    def get_records(self) -> List[Dict[str, Any]]:
+        with self._connect() as db:
+            db.row_factory = sqlite3.Row
+            return [dict(row) for row in db.execute("SELECT * FROM execucoes ORDER BY id")]
+
+    def get_schedule_states(self) -> List[Dict[str, Any]]:
+        with self._connect() as db:
+            db.row_factory = sqlite3.Row
+            return [dict(row) for row in db.execute("SELECT * FROM fontes ORDER BY fonte_tipo, fonte_id")]
+
+    def create_web_operation(self, operation_id: str, operation: str, target: Optional[str] = None) -> None:
+        now = datetime.now(timezone.utc).isoformat()
+        with self._connect() as db:
+            db.execute("INSERT INTO operacoes_web (id,operacao,alvo,status,inicio_utc) VALUES (?,?,?,?,?)",
+                       (operation_id, operation, target, "EM_ANDAMENTO", now))
+
+    def finish_web_operation(self, operation_id: str, status: str, result: Optional[Dict[str, Any]] = None,
+                             error: Optional[str] = None) -> None:
+        end = datetime.now(timezone.utc)
+        with self._connect() as db:
+            row = db.execute("SELECT inicio_utc FROM operacoes_web WHERE id=?", (operation_id,)).fetchone()
+            if not row:
+                return
+            start = datetime.fromisoformat(row[0])
+            db.execute("""UPDATE operacoes_web SET status=?,fim_utc=?,duracao_segundos=?,
+                resultado_json=?,mensagem_erro=? WHERE id=?""",
+                (status, end.isoformat(), round((end-start).total_seconds(), 2),
+                 json.dumps(result, ensure_ascii=False, default=str) if result is not None else None,
+                 error, operation_id))
+
+    def get_web_operations(self, limit: int = 100) -> List[Dict[str, Any]]:
+        with self._connect() as db:
+            db.row_factory = sqlite3.Row
+            rows = [dict(r) for r in db.execute("SELECT * FROM operacoes_web ORDER BY inicio_utc DESC LIMIT ?", (limit,))]
+        for row in rows:
+            try:
+                row["resultado"] = json.loads(row.pop("resultado_json")) if row.get("resultado_json") else None
+            except ValueError:
+                row["resultado"] = None
+        return rows
+
+    def interrupt_open_web_operations(self) -> int:
+        end = datetime.now(timezone.utc).isoformat()
+        with self._connect() as db:
+            cur = db.execute("""UPDATE operacoes_web SET status='INTERROMPIDA',fim_utc=?,
+                mensagem_erro='Servidor reiniciado antes de registrar o resultado.'
+                WHERE status='EM_ANDAMENTO'""", (end,))
+            return cur.rowcount
+
+    def set_frequency(self, fonte_id: str, fonte_tipo: str, frequencia: str) -> None:
+        next_run = self.is_due_for_update(fonte_id, frequencia)[2]
+        with self._connect() as db:
+            db.execute("""INSERT INTO fontes (fonte_id,fonte_tipo,frequencia,proxima_execucao_utc)
+                VALUES (?,?,?,?) ON CONFLICT(fonte_id) DO UPDATE SET
+                fonte_tipo=excluded.fonte_tipo, frequencia=excluded.frequencia,
+                proxima_execucao_utc=excluded.proxima_execucao_utc""",
+                (fonte_id, fonte_tipo, frequencia, next_run.isoformat() if next_run else None))
 
     def load_history(self) -> List[Dict[str, Any]]:
         """Carrega o histórico completo de execuções."""
@@ -86,6 +188,7 @@ class ExecutionHistory:
         duracao: float = 0.0,
         mensagem: str = "",
         arquivo_csv: Optional[str] = None,
+        frequencia: str = "manual",
     ) -> Dict[str, Any]:
         """Registra uma nova execução no histórico."""
         records = self.load_history()
@@ -107,27 +210,39 @@ class ExecutionHistory:
 
         records.append(record)
         self.save_history(records)
+        self._sync_sqlite(record)
+        last_success = self.get_last_success(fonte_id)
+        last_success_at = last_success.get("data_fim_utc") if last_success else None
+        next_run = self.is_due_for_update(fonte_id, frequencia)[2]
+        with self._connect() as db:
+            db.execute("""INSERT INTO fontes
+                (fonte_id,fonte_tipo,frequencia,ultima_tentativa_utc,ultima_atualizacao_sucesso_utc,proxima_execucao_utc)
+                VALUES (?,?,?,?,?,?) ON CONFLICT(fonte_id) DO UPDATE SET
+                fonte_tipo=excluded.fonte_tipo, frequencia=excluded.frequencia,
+                ultima_tentativa_utc=excluded.ultima_tentativa_utc,
+                ultima_atualizacao_sucesso_utc=excluded.ultima_atualizacao_sucesso_utc,
+                proxima_execucao_utc=excluded.proxima_execucao_utc""",
+                (fonte_id, fonte_tipo, frequencia, record["data_fim_utc"], last_success_at,
+                 next_run.isoformat() if next_run else None))
         return record
 
     def get_last_success(self, fonte_id: str) -> Optional[Dict[str, Any]]:
         """Retorna a última execução bem-sucedida para uma fonte."""
-        records = self.load_history()
-        for r in reversed(records):
-            if r.get("fonte_id") == fonte_id and r.get("status") == "SUCESSO":
-                return r
-        return None
+        with self._connect() as db:
+            db.row_factory = sqlite3.Row
+            row = db.execute("SELECT * FROM execucoes WHERE fonte_id=? AND status IN ('SUCESSO','VAZIO') ORDER BY id DESC LIMIT 1", (fonte_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_last_attempt(self, fonte_id: str) -> Optional[Dict[str, Any]]:
         """Retorna a última tentativa (sucesso ou falha) para uma fonte."""
-        records = self.load_history()
-        for r in reversed(records):
-            if r.get("fonte_id") == fonte_id:
-                return r
-        return None
+        with self._connect() as db:
+            db.row_factory = sqlite3.Row
+            row = db.execute("SELECT * FROM execucoes WHERE fonte_id=? ORDER BY id DESC LIMIT 1", (fonte_id,)).fetchone()
+            return dict(row) if row else None
 
     def get_failed_sources(self) -> List[str]:
         """Retorna IDs das fontes cuja última execução foi uma falha."""
-        records = self.load_history()
+        records = self.get_records()
         last_by_fonte: Dict[str, Dict] = {}
         for r in records:
             fid = r.get("fonte_id")
@@ -136,7 +251,7 @@ class ExecutionHistory:
 
         return [
             fid for fid, r in last_by_fonte.items()
-            if r.get("status", "").startswith("FALHA")
+            if r.get("status", "").startswith(("FALHA", "REQUER_AUTENTICACAO"))
         ]
 
     def is_due_for_update(
@@ -146,7 +261,8 @@ class ExecutionHistory:
         Verifica se uma fonte precisa ser atualizada com base na frequência.
         Retorna (precisa_atualizar, ultima_coleta, proxima_coleta).
         """
-        dias = FREQUENCIA_DIAS.get(frequencia.lower())
+        frequency = frequencia.lower()
+        dias = FREQUENCIA_DIAS.get(frequency)
 
         if dias is None:
             # Fonte manual/estática - nunca vence automaticamente
@@ -168,7 +284,14 @@ class ExecutionHistory:
         except (ValueError, TypeError):
             return True, None, None
 
-        next_dt = last_dt + timedelta(days=dias)
+        if frequency in {"mensal", "trimestral"}:
+            months = 1 if frequency == "mensal" else 3
+            month_index = last_dt.year * 12 + last_dt.month - 1 + months
+            year, month = divmod(month_index, 12)
+            month += 1
+            next_dt = last_dt.replace(year=year, month=month, day=min(last_dt.day, calendar.monthrange(year, month)[1]))
+        else:
+            next_dt = last_dt + timedelta(days=dias)
         now = datetime.now(timezone.utc)
         is_due = now >= next_dt
 

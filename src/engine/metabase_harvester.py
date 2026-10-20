@@ -9,10 +9,12 @@ e manutenção de catálogo para todos os cards públicos do Metabase municipal.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
 import logging
 import os
 import re
+import shutil
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -184,6 +186,12 @@ class MetabaseHarvester:
             # Se gravou com sucesso, substituir o arquivo alvo
             if temp_csv.exists():
                 if target_csv.exists():
+                    previous_hash = hashlib.sha256(target_csv.read_bytes()).hexdigest()
+                    version_dir = Path("data/history/versions")
+                    version_dir.mkdir(parents=True, exist_ok=True)
+                    version = version_dir / f"card_{card_spec.card_id}_{previous_hash[:12]}.csv"
+                    if not version.exists():
+                        shutil.copy2(target_csv, version)
                     target_csv.unlink()
                 temp_csv.rename(target_csv)
 
@@ -213,6 +221,8 @@ class MetabaseHarvester:
         self,
         dashboard_uuids: Optional[List[str]] = None,
         inventory_csv_path: Optional[str | Path] = None,
+        card_ids: Optional[set[str]] = None,
+        source_keys: Optional[set[str]] = None,
     ) -> Dict[str, Any]:
         """
         Executa a descoberta e coleta completa dos dashboards Metabase.
@@ -254,6 +264,11 @@ class MetabaseHarvester:
             all_discovered_cards.extend(cards)
 
         stats["cards_descobertos"] = len(all_discovered_cards)
+        if source_keys is not None:
+            all_discovered_cards = [c for c in all_discovered_cards if f"{c.dashboard_uuid}:{c.card_id}" in source_keys]
+        elif card_ids is not None:
+            all_discovered_cards = [c for c in all_discovered_cards if str(c.card_id) in card_ids]
+            logger.info("Cards selecionados para esta execução: %d", len(all_discovered_cards))
         logger.info("Total de cards descobertos dinamicamente: %d", len(all_discovered_cards))
 
         # 4. Fase de Coleta Sequencial Resiliente
@@ -370,9 +385,11 @@ class MetabaseHarvester:
         ) if falhas else "Nenhuma falha registrada."
 
         md = f"""# Relatório de Coleta do Metabase Municipal
-**Data/Hora de Início (UTC):** `{stats['inicio_utc']}`  
-**Data/Hora de Conclusão (UTC):** `{stats['fim_utc']}`  
-**Duração Total:** `{stats['tempo_total_segundos']}s`  
+**Data/Hora de Início (UTC):** `{stats['inicio_utc']}`
+
+**Data/Hora de Conclusão (UTC):** `{stats['fim_utc']}`
+
+**Duração Total:** `{stats['tempo_total_segundos']}s`
 
 ---
 

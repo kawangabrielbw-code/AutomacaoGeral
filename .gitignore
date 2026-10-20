@@ -1,0 +1,36 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# Ambiente e credenciais
+.env
+.env.*
+*.pem
+*.key
+*.p12
+*credential*.json
+*service_account*.json
+*service-account*.json
+
+# Logs, bancos locais e estado operacional
+logs/
+*.log
+*.sqlite3
+*.db
+.coleta.lock
+data/history/
+data/**/.tmp_*
+docs/relatorios/carga_central_*
+docs/relatorios/resultado_carga_central_*
+docs/relatorios/diagnostico_prontidao_*
+docs/relatorios/divergencias_auditoria_*
+
+# SO / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
