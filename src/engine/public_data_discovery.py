@@ -6,7 +6,7 @@ from __future__ import annotations
 
 from html.parser import HTMLParser
 from typing import Any
-from urllib.parse import urljoin, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import requests
 
@@ -43,6 +43,14 @@ def discover_resources(source: dict[str, Any], session: requests.Session, timeou
     results: list[dict[str, Any]] = []
     ckan_base = str(discovery.get("ckan_api_base") or "").rstrip("/")
     package_id = str(discovery.get("package_id") or "").strip()
+    if not ckan_base and not package_id and str(source.get("strategy", "")).lower() == "ckan":
+        landing = urlparse(str(source.get("url") or ""))
+        path_parts = [part for part in landing.path.split("/") if part]
+        if "dataset" in path_parts:
+            index = path_parts.index("dataset")
+            if index + 1 < len(path_parts):
+                ckan_base = f"{landing.scheme}://{landing.netloc}"
+                package_id = unquote(path_parts[index + 1])
     resource_filter = str(discovery.get("resource_name_contains") or "").casefold()
     if ckan_base and package_id:
         api_url = f"{ckan_base}/api/3/action/package_show?id={package_id}"
