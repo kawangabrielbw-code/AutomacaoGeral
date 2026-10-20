@@ -26,6 +26,8 @@ import socket
 
 import requests
 
+from src.engine.public_data_discovery import discover_resources as _discover_resources
+
 LOG = logging.getLogger(__name__)
 DEFAULT_CATALOG = Path("config/public_data_sources.json")
 DEFAULT_DATA = Path("data")
@@ -120,6 +122,27 @@ class PublicDataPipeline:
             source["last_run"] = latest.get(source["id"])
         return sources
 
+    def discover(self, source_id: str | None = None) -> list[dict[str, Any]]:
+        """Discover supported resources for one source or every source without downloading them."""
+        sources = self.catalog()["sources"]
+        if source_id is not None:
+            sources = [item for item in sources if item["id"] == source_id]
+            if not sources:
+                raise KeyError(f"Fonte não cadastrada: {source_id}")
+        output = []
+        for source in sources:
+            configured = str(source.get("resource_url") or "").strip()
+            try:
+                if configured:
+                    validate_public_url(configured)
+                    candidates = [{"name": "URL configurada", "url": configured, "format": Path(urlparse(configured).path).suffix.lstrip(".").upper(), "source": "catalog"}]
+                else:
+                    candidates = _discover_resources(source, self.session, self.timeout, validate_public_url)
+                output.append({"source_id": source["id"], "name": source.get("name"), "status": "found" if candidates else "not_found", "resources": candidates, "message": f"{len(candidates)} recurso(s) público(s) encontrado(s)." if candidates else "Nenhum recurso tabular direto encontrado; requer configuração manual ou API específica."})
+            except Exception as exc:
+                output.append({"source_id": source["id"], "name": source.get("name"), "status": "error", "resources": [], "message": f"{type(exc).__name__}: {exc}"})
+        return output
+
     def run(self, source_id: str, resource_url: str | None = None) -> PipelineResult:
         started = utcnow()
         source = next((s for s in self.catalog()["sources"] if s["id"] == source_id), None)
@@ -133,7 +156,10 @@ class PublicDataPipeline:
         status, message = "failed", ""
         try:
             if not url:
-                raise ValueError("Fonte catalogada sem resource_url: configure a URL direta do recurso público autorizado.")
+                discovery = _discover_resources(source, self.session, self.timeout, validate_public_url)
+                if not discovery:
+                    raise ValueError("Nenhum recurso tabular público foi descoberto. Configure resource_url ou a estratégia de descoberta oficial.")
+                url = str(discovery[0]["url"])
             validate_public_url(url)
             raw_dir = self.data_dir / "raw" / source_id
             processed_dir = self.data_dir / "processed" / source_id
