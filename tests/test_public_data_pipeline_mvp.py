@@ -88,6 +88,7 @@ class PublicDataPipelineMvpTests(unittest.TestCase):
 
     def test_discovery_rejects_resource_on_unlisted_host(self):
         class Response:
+            text = ""
             def raise_for_status(self):
                 return None
             def json(self):
