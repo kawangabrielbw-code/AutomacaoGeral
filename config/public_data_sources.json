@@ -190,8 +190,16 @@
       ],
       "frequency": "monthly",
       "frequency_kind": "estimated",
-      "status": "pending",
-      "notes": "Não foi assumido endpoint de exportação. Configurar resource_url apenas após confirmar exportação pública autorizada e pequena."
+      "status": "discovery_configured",
+      "notes": "Descoberta configurada para o conjunto oficial Sinistros (Infosiga) no portal Dados Abertos SP. A primeira coleta real ainda deve confirmar que a API CKAN e o recurso selecionado estão acessíveis e dentro do limite de download.",
+      "allowed_hosts": [
+        "dadosabertos.sp.gov.br"
+      ],
+      "discovery": {
+        "ckan_api_base": "https://dadosabertos.sp.gov.br",
+        "package_id": "sinistros-infosiga",
+        "resource_name_contains": "eventos"
+      }
     },
     {
       "id": "tce_sp_transparencia",

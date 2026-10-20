@@ -26,12 +26,49 @@ from src.engine.execution_history import ExecutionHistory
 from webapp.services import (FREQUENCIES, ROOT, catalog_rows, execute_scheduler_action,
     operations, save_frequency, scheduler_dry_run, scheduler_status, source_history)
 from src.engine.google_sheets_exporter import GoogleSheetsExporter, ExportError
+from src.engine.public_data_pipeline import PublicDataPipeline
 from webapp.security import valid_hash, verify_password
 
 logger = logging.getLogger("oppes.web")
 export_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="oppes-export")
 export_guard = threading.Lock()
 active_export_id: Optional[str] = None
+public_data_executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="public-data")
+public_data_guard = threading.Lock()
+public_data_jobs: dict[str, dict] = {}
+
+
+def public_pipeline() -> PublicDataPipeline:
+    return PublicDataPipeline(ROOT / "config/public_data_sources.json", ROOT / "data",
+                              max_download_bytes=512 * 1024 * 1024)
+
+
+def _execute_public_data_job(job_id: str, source_id: str, resource_url: Optional[str]) -> None:
+    with public_data_guard:
+        public_data_jobs[job_id]["status"] = "running"
+        public_data_jobs[job_id]["message"] = "Coleta em andamento."
+    try:
+        result = public_pipeline().run(source_id, resource_url)
+        outcome = {"id": job_id, "source_id": source_id, "status": result.status,
+                   "message": result.message, "raw_files": result.raw_files,
+                   "processed_files": result.processed_files,
+                   "bytes_downloaded": result.bytes_downloaded}
+    except Exception as exc:
+        logger.exception("Falha na coleta de dados públicos (%s)", job_id)
+        outcome = {"id": job_id, "source_id": source_id, "status": "failed",
+                   "message": f"{type(exc).__name__}: {str(exc)[:500]}"}
+    with public_data_guard:
+        public_data_jobs[job_id] = outcome
+
+
+class PublicDataDiscoverPayload(BaseModel):
+    source_id: Optional[str] = Field(default=None, max_length=220)
+
+
+class PublicDataCollectPayload(BaseModel):
+    source_id: str = Field(min_length=1, max_length=220)
+    resource_url: Optional[str] = Field(default=None, max_length=2048)
+
 WEB_DIR = Path(__file__).resolve().parent
 SESSION_SECRET = os.environ.get("OPPES_SESSION_SECRET") or secrets.token_urlsafe(48)
 ADMIN_PASSWORD_HASH = os.environ.get("OPPES_ADMIN_PASSWORD_HASH", "")
@@ -460,6 +497,73 @@ async def get_operation(operation_id: str, request: Request):
     return row
 
 
+@app.get("/api/public-data/sources")
+async def public_data_sources(request: Request):
+    require_auth(request)
+    return {"items": public_pipeline().list_sources()}
+
+
+@app.get("/api/public-data/history")
+async def public_data_history(request: Request, limit: int = Query(50, ge=1, le=200)):
+    require_auth(request)
+    return {"items": public_pipeline().history(limit)}
+
+
+@app.post("/api/public-data/discover")
+async def discover_public_data(payload: PublicDataDiscoverPayload, request: Request,
+                               x_csrf_token: Optional[str] = Header(default=None)):
+    require_auth(request)
+    check_csrf(request, x_csrf_token)
+    try:
+        return {"items": public_pipeline().discover(payload.source_id)}
+    except KeyError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except (OSError, ValueError) as exc:
+        raise HTTPException(422, str(exc)) from exc
+
+
+@app.post("/api/public-data/collect")
+async def collect_public_data(payload: PublicDataCollectPayload, request: Request,
+                              x_csrf_token: Optional[str] = Header(default=None)):
+    require_auth(request)
+    check_csrf(request, x_csrf_token)
+    pipeline = public_pipeline()
+    catalog_ids = {item["id"] for item in pipeline.catalog()["sources"]}
+    if payload.source_id not in catalog_ids:
+        raise HTTPException(404, "Fonte pública não encontrada no catálogo.")
+    resource_url = (payload.resource_url or "").strip() or None
+    if resource_url:
+        discovered = pipeline.discover(payload.source_id)
+        allowed_urls = {str(item.get("url")) for group in discovered
+                        for item in group.get("resources", []) if item.get("url")}
+        if resource_url not in allowed_urls:
+            raise HTTPException(422, "A URL selecionada não consta entre os recursos públicos descobertos para esta fonte.")
+    with public_data_guard:
+        active = next((job for job in public_data_jobs.values()
+                       if job.get("status") in {"queued", "running"}), None)
+        if active:
+            raise HTTPException(409, "Já existe uma coleta de dados públicos em andamento.")
+        job_id = str(uuid.uuid4())
+        public_data_jobs[job_id] = {"id": job_id, "source_id": payload.source_id, "status": "queued",
+                                    "message": "Aguardando execução."}
+        public_data_executor.submit(_execute_public_data_job, job_id, payload.source_id, resource_url)
+    return public_data_jobs[job_id]
+
+
+@app.get("/api/public-data/jobs/{job_id}")
+async def public_data_job(job_id: str, request: Request):
+    require_auth(request)
+    try:
+        uuid.UUID(job_id)
+    except ValueError as exc:
+        raise HTTPException(422, "Identificador de operação inválido.") from exc
+    with public_data_guard:
+        job = public_data_jobs.get(job_id)
+    if not job:
+        raise HTTPException(404, "Operação de dados públicos não encontrada nesta sessão do servidor.")
+    return job
+
+
 @app.get("/api/settings")
 async def get_settings(request: Request):
     require_auth(request)
@@ -532,7 +636,7 @@ async def get_logs(request: Request, lines: int = Query(100, ge=1, le=500)):
 
 @app.get("/{section}", response_class=HTMLResponse)
 async def web_page(section: str, request: Request):
-    allowed = {"dashboard", "sources", "collections", "history", "settings", "exports"}
+    allowed = {"dashboard", "sources", "collections", "history", "settings", "exports", "public-data"}
     if section not in allowed:
         raise HTTPException(404, "Página não encontrada.")
     if request.session.get("authenticated") is not True:

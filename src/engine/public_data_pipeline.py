@@ -26,6 +26,8 @@ import socket
 
 import requests
 
+from src.engine.public_data_discovery import discover_resources as _discover_resources
+
 LOG = logging.getLogger(__name__)
 DEFAULT_CATALOG = Path("config/public_data_sources.json")
 DEFAULT_DATA = Path("data")
@@ -120,6 +122,27 @@ class PublicDataPipeline:
             source["last_run"] = latest.get(source["id"])
         return sources
 
+    def discover(self, source_id: str | None = None) -> list[dict[str, Any]]:
+        """Discover supported resources for one source or every source without downloading them."""
+        sources = self.catalog()["sources"]
+        if source_id is not None:
+            sources = [item for item in sources if item["id"] == source_id]
+            if not sources:
+                raise KeyError(f"Fonte não cadastrada: {source_id}")
+        output = []
+        for source in sources:
+            configured = str(source.get("resource_url") or "").strip()
+            try:
+                if configured:
+                    validate_public_url(configured)
+                    candidates = [{"name": "URL configurada", "url": configured, "format": Path(urlparse(configured).path).suffix.lstrip(".").upper(), "source": "catalog"}]
+                else:
+                    candidates = _discover_resources(source, self.session, self.timeout, validate_public_url)
+                output.append({"source_id": source["id"], "name": source.get("name"), "status": "found" if candidates else "not_found", "resources": candidates, "message": f"{len(candidates)} recurso(s) público(s) encontrado(s)." if candidates else "Nenhum recurso tabular direto encontrado; requer configuração manual ou API específica."})
+            except Exception as exc:
+                output.append({"source_id": source["id"], "name": source.get("name"), "status": "error", "resources": [], "message": f"{type(exc).__name__}: {exc}"})
+        return output
+
     def run(self, source_id: str, resource_url: str | None = None) -> PipelineResult:
         started = utcnow()
         source = next((s for s in self.catalog()["sources"] if s["id"] == source_id), None)
@@ -133,7 +156,10 @@ class PublicDataPipeline:
         status, message = "failed", ""
         try:
             if not url:
-                raise ValueError("Fonte catalogada sem resource_url: configure a URL direta do recurso público autorizado.")
+                discovery = _discover_resources(source, self.session, self.timeout, validate_public_url)
+                if not discovery:
+                    raise ValueError("Nenhum recurso tabular público foi descoberto. Configure resource_url ou a estratégia de descoberta oficial.")
+                url = str(discovery[0]["url"])
             validate_public_url(url)
             raw_dir = self.data_dir / "raw" / source_id
             processed_dir = self.data_dir / "processed" / source_id
@@ -248,7 +274,7 @@ class PublicDataPipeline:
                     if Path(member.filename).suffix.lower() not in {".csv", ".txt", ".xlsx", ".xls", ".ods", ".json"}:
                         continue
                     total += member.file_size
-                    target = out_dir / (Path(member.filename).name)
+                    target = out_dir / (Path(member.filename).stem + ".csv")
                     with archive.open(member) as inp, tempfile.NamedTemporaryFile(dir=out_dir, suffix=Path(member.filename).suffix.lower(), delete=False) as tmp:
                         shutil.copyfileobj(inp, tmp, length=1024 * 1024)
                         temp = Path(tmp.name)
@@ -284,9 +310,20 @@ class PublicDataPipeline:
             raise ValueError(f"Formato não suportado: {suffix}")
         encoding = source.get("encoding", "utf-8-sig")
         delimiter = source.get("delimiter")
+        encodings = list(dict.fromkeys([encoding, *source.get("encoding_fallbacks", []), "cp1252", "latin-1"]))
+        sample = ""
+        last_decode_error = None
+        for candidate_encoding in encodings:
+            try:
+                with input_path.open("r", encoding=candidate_encoding, newline="") as probe:
+                    sample = probe.read(65536)
+                encoding = candidate_encoding
+                break
+            except UnicodeDecodeError as exc:
+                last_decode_error = exc
+        else:
+            raise ValueError(f"Nenhuma codificação suportada para o arquivo: {last_decode_error}")
         with input_path.open("r", encoding=encoding, newline="") as f:
-            sample = f.read(65536)
-            f.seek(0)
             if not sample.strip():
                 raise ValueError("Arquivo tabular vazio.")
             if not delimiter:
@@ -304,7 +341,7 @@ class PublicDataPipeline:
             temp = Path(temp_name)
             try:
                 with temp.open("w", encoding="utf-8", newline="") as out:
-                    writer = csv.writer(out, delimiter=source.get("output_delimiter", ","), lineterminator="\\n")
+                    writer = csv.writer(out, delimiter=source.get("output_delimiter", ","), lineterminator="\n")
                     writer.writerow(header)
                     for row in reader:
                         if not row or not any(str(v).strip() for v in row):
@@ -324,7 +361,7 @@ class PublicDataPipeline:
         os.close(fd)
         temp = Path(temp_name)
         try:
-            frame.to_csv(temp, index=False, encoding="utf-8", lineterminator="\\n")
+            frame.to_csv(temp, index=False, encoding="utf-8", lineterminator="\n")
             if temp.stat().st_size == 0:
                 raise ValueError("Conversão gerou CSV vazio.")
             os.replace(temp, output_path)
