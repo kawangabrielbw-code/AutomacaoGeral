@@ -330,7 +330,7 @@ class PublicDataPipeline:
             temp = Path(temp_name)
             try:
                 with temp.open("w", encoding="utf-8", newline="") as out:
-                    writer = csv.writer(out, delimiter=source.get("output_delimiter", ","), lineterminator="\\n")
+                    writer = csv.writer(out, delimiter=source.get("output_delimiter", ","), lineterminator="\n")
                     writer.writerow(header)
                     for row in reader:
                         if not row or not any(str(v).strip() for v in row):
@@ -350,7 +350,7 @@ class PublicDataPipeline:
         os.close(fd)
         temp = Path(temp_name)
         try:
-            frame.to_csv(temp, index=False, encoding="utf-8", lineterminator="\\n")
+            frame.to_csv(temp, index=False, encoding="utf-8", lineterminator="\n")
             if temp.stat().st_size == 0:
                 raise ValueError("Conversão gerou CSV vazio.")
             os.replace(temp, output_path)
