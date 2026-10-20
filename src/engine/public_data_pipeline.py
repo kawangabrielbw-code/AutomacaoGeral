@@ -310,9 +310,20 @@ class PublicDataPipeline:
             raise ValueError(f"Formato não suportado: {suffix}")
         encoding = source.get("encoding", "utf-8-sig")
         delimiter = source.get("delimiter")
+        encodings = list(dict.fromkeys([encoding, *source.get("encoding_fallbacks", []), "cp1252", "latin-1"]))
+        sample = ""
+        last_decode_error = None
+        for candidate_encoding in encodings:
+            try:
+                with input_path.open("r", encoding=candidate_encoding, newline="") as probe:
+                    sample = probe.read(65536)
+                encoding = candidate_encoding
+                break
+            except UnicodeDecodeError as exc:
+                last_decode_error = exc
+        else:
+            raise ValueError(f"Nenhuma codificação suportada para o arquivo: {last_decode_error}")
         with input_path.open("r", encoding=encoding, newline="") as f:
-            sample = f.read(65536)
-            f.seek(0)
             if not sample.strip():
                 raise ValueError("Arquivo tabular vazio.")
             if not delimiter:
