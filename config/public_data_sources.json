@@ -1,0 +1,259 @@
+{
+  "version": 1,
+  "description": "Catálogo de fontes públicas oficiais. status descreve a maturidade real da integração; URLs de páginas não são tratadas como arquivos de dados.",
+  "sources": [
+    {
+      "id": "ibge_censo2022_panorama",
+      "name": "Censo 2022 — Panorama",
+      "organization": "IBGE",
+      "url": "https://censo2022.ibge.gov.br/panorama/",
+      "strategy": "manual_resource",
+      "formats": [
+        "API",
+        "CSV",
+        "XLSX"
+      ],
+      "frequency": null,
+      "frequency_kind": "unknown",
+      "status": "limited",
+      "notes": "Página de apresentação; selecionar indicador/tabela e identificar endpoint oficial ou download específico antes de automatizar."
+    },
+    {
+      "id": "ibge_pib_municipios",
+      "name": "PIB dos Municípios",
+      "organization": "IBGE",
+      "url": "https://www.ibge.gov.br/estatisticas/economicas/contas-nacionais/9088-produto-interno-bruto-dos-municipios.html",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "API"
+      ],
+      "frequency": "annual",
+      "frequency_kind": "known",
+      "status": "limited",
+      "notes": "Página de produto. Recurso exato deve ser configurado após identificar a edição/tabela publicada."
+    },
+    {
+      "id": "sp_receita_tributaria",
+      "name": "Relatórios da Receita Tributária de São Paulo",
+      "organization": "Secretaria da Fazenda e Planejamento de SP",
+      "url": "https://portal.fazenda.sp.gov.br/acessoinformacao/Paginas/Relat%C3%B3rios-da-Receita-Tribut%C3%A1ria.aspx",
+      "strategy": "manual_resource",
+      "formats": [
+        "XLSX",
+        "CSV",
+        "PDF"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "known",
+      "status": "limited",
+      "notes": "Página lista relatórios; configure a URL direta do arquivo da competência desejada."
+    },
+    {
+      "id": "rfb_arrecadacao_municipio",
+      "name": "Arrecadação da Receita Federal por Município",
+      "organization": "Receita Federal do Brasil",
+      "url": "https://www.gov.br/receitafederal/pt-br/acesso-a-informacao/dados-abertos/receitadata/arrecadacao/copy_of_arrecadacao-das-receitas-administradas-pela-rfb-por-municipio",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "ZIP"
+      ],
+      "frequency": null,
+      "frequency_kind": "unknown",
+      "status": "limited",
+      "notes": "Página de dados abertos; definir URL direta/versionada do arquivo após inspeção dos recursos publicados."
+    },
+    {
+      "id": "semil_energeticos_municipios",
+      "name": "Anuário de Energéticos por Municípios de São Paulo",
+      "organization": "SEMIL",
+      "url": "https://semil.sp.gov.br/anuario-de-energeticos-por-municipios-do-estado-de-sao-paulo/",
+      "strategy": "manual_resource",
+      "formats": [
+        "XLSX",
+        "CSV",
+        "PDF"
+      ],
+      "frequency": "annual",
+      "frequency_kind": "estimated",
+      "status": "limited",
+      "notes": "Periodicidade estimada pelo formato de anuário; recurso direto precisa ser configurado."
+    },
+    {
+      "id": "dadosgov_cnpj",
+      "name": "Cadastro Nacional da Pessoa Jurídica (CNPJ)",
+      "organization": "Receita Federal / dados.gov.br",
+      "url": "https://dados.gov.br/dados/conjuntos-dados/cadastro-nacional-da-pessoa-juridica---cnpj",
+      "strategy": "ckan",
+      "formats": [
+        "CSV",
+        "ZIP"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "estimated",
+      "status": "limited",
+      "notes": "Catálogo de apresentação; conector CKAN tentará descobrir metadados/recursos quando o endpoint CKAN correspondente estiver configurado. Arquivos são muito grandes; executar apenas após definir limite e seleção."
+    },
+    {
+      "id": "cnes",
+      "name": "Cadastro Nacional de Estabelecimentos de Saúde (CNES)",
+      "organization": "DATASUS / Ministério da Saúde",
+      "url": "https://cnes.datasus.gov.br/pages/consultas.jsp",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "DBF",
+        "ZIP"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "estimated",
+      "status": "limited",
+      "notes": "Portal de consulta não é, por si só, um arquivo tabular. Identificar pacote oficial de disseminação e seu layout antes de habilitar coleta."
+    },
+    {
+      "id": "miest_sp",
+      "name": "Matrícula Inicial da Educação Básica (MIEST)",
+      "organization": "Secretaria da Educação de SP",
+      "url": "https://dados.educacao.sp.gov.br/dataset/miest-matr%C3%ADcula-inicial-da-educa%C3%A7%C3%A3o-b%C3%A1sica-do-estado-de-s%C3%A3o-paulo",
+      "strategy": "ckan",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "ODS"
+      ],
+      "frequency": "annual",
+      "frequency_kind": "estimated",
+      "status": "limited",
+      "notes": "Portal CKAN-like; configurar endpoint da API de catálogo do portal e selecionar o recurso após descoberta."
+    },
+    {
+      "id": "seade_ipvs",
+      "name": "Índice Paulista de Vulnerabilidade Social (IPVS)",
+      "organization": "Fundação Seade",
+      "url": "https://ipvs.seade.gov.br/",
+      "strategy": "manual_resource",
+      "formats": [
+        "XLSX",
+        "CSV",
+        "API"
+      ],
+      "frequency": null,
+      "frequency_kind": "unknown",
+      "status": "limited",
+      "notes": "Aplicação/visualizador; não presumir exportação integral. Identificar download ou API oficial documentada."
+    },
+    {
+      "id": "mte_estatisticas",
+      "name": "Estatísticas do Trabalho",
+      "organization": "Ministério do Trabalho e Emprego",
+      "url": "https://www.gov.br/trabalho-e-emprego/pt-br/assuntos/estatisticas-trabalho",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "ZIP"
+      ],
+      "frequency": null,
+      "frequency_kind": "unknown",
+      "status": "limited",
+      "notes": "Página agregadora; configurar recurso direto por série estatística."
+    },
+    {
+      "id": "mte_estatisticas_complementar",
+      "name": "Estatísticas do Trabalho — página complementar",
+      "organization": "Ministério do Trabalho e Emprego",
+      "url": "https://www.gov.br/trabalho-e-emprego/pt-br/acesso-a-informacao/acoes-e-programas/programas-projetos-acoes-obras-e-atividades/estatisticas-trabalho",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "ZIP"
+      ],
+      "frequency": null,
+      "frequency_kind": "unknown",
+      "status": "limited",
+      "notes": "Página complementar da mesma área; mantida separada por URL/conteúdo, não implica dataset distinto."
+    },
+    {
+      "id": "infosiga_detran_sp",
+      "name": "Infosiga — DETRAN-SP",
+      "organization": "DETRAN-SP / Governo de SP",
+      "url": "https://infosiga.detran.sp.gov.br/",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "API"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "estimated",
+      "status": "pending",
+      "notes": "Não foi assumido endpoint de exportação. Configurar resource_url apenas após confirmar exportação pública autorizada e pequena."
+    },
+    {
+      "id": "tce_sp_transparencia",
+      "name": "Portal de Transparência do TCE-SP",
+      "organization": "Tribunal de Contas do Estado de São Paulo",
+      "url": "https://transparencia.tce.sp.gov.br/",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX",
+        "API"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "estimated",
+      "status": "limited",
+      "notes": "Portal possui diversos conjuntos/consultas; identificar endpoint por conjunto e entidade antes de coletar."
+    },
+    {
+      "id": "sisab",
+      "name": "SISAB",
+      "organization": "Ministério da Saúde",
+      "url": "https://sisab.saude.gov.br/index.xhtml",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "estimated",
+      "status": "limited",
+      "notes": "Acesso e exportações podem variar por relatório/perfil; somente recursos públicos autorizados serão processados."
+    },
+    {
+      "id": "ssp_sp_dados_mensais",
+      "name": "Estatísticas mensais da Segurança Pública de SP",
+      "organization": "Secretaria da Segurança Pública de SP",
+      "url": "https://www.ssp.sp.gov.br/estatistica/dados-mensais",
+      "strategy": "manual_resource",
+      "formats": [
+        "XLSX",
+        "CSV",
+        "ZIP"
+      ],
+      "frequency": "monthly",
+      "frequency_kind": "known",
+      "status": "limited",
+      "notes": "Página de publicação; URL direta do arquivo por período deve ser definida/descoberta."
+    },
+    {
+      "id": "powerbi_referencia",
+      "name": "Painel Power BI de referência",
+      "organization": "Publicador não confirmado",
+      "url": "https://app.powerbi.com/view?r=eyJrIjoiN2ViNDBjNDEtMTM0OC00ZmFhLWIyZWYtZjI1YjU0NzQzMTJhIiwidCI6IjI2ZjczODk3LWM4YWMtNGIxZS05NzhmLWVhNGMwNzc0MzRiZiJ9",
+      "strategy": "manual_resource",
+      "formats": [
+        "CSV",
+        "XLSX"
+      ],
+      "frequency": null,
+      "frequency_kind": "unknown",
+      "status": "limited",
+      "notes": "Não presumir exportação pública ou acesso ao modelo semântico. Usar exportação disponibilizada pela interface ou identificar a fonte original autorizada."
+    }
+  ]
+}
