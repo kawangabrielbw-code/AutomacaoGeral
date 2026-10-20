@@ -76,6 +76,29 @@ O agendador não é criado pela aplicação automaticamente. Na página Configur
 
 O painel legado Streamlit continua disponível para compatibilidade com `py -m streamlit run scripts/painel.py`.
 
+## Fontes públicas oficiais
+
+O catálogo `config/public_data_sources.json` contém fontes oficiais e informa o nível real de integração. A descoberta consulta metadados CKAN quando configurados e, como alternativa, procura links tabulares diretos na página oficial. Ela não considera uma página de apresentação como se fosse o arquivo de dados.
+
+```powershell
+# Listar o catálogo e os últimos resultados
+py scripts/coletar_fontes_publicas.py list
+
+# Descobrir recursos sem baixar os arquivos
+py scripts/coletar_fontes_publicas.py discover
+py scripts/coletar_fontes_publicas.py discover infosiga_detran_sp
+
+# Coletar uma fonte com descoberta configurada
+py scripts/coletar_fontes_publicas.py collect infosiga_detran_sp
+
+# Consultar o histórico do pipeline público
+py scripts/coletar_fontes_publicas.py history
+```
+
+A interface web também tem a seção **Dados públicos**, com descoberta, seleção de recurso, coleta e histórico. A coleta via interface limita cada download a 512 MB. Os arquivos brutos ficam em `data/raw/<id-da-fonte>`, os CSVs processados em `data/processed/<id-da-fonte>` e o histórico em `data/history/public_sources.sqlite3`.
+
+A descoberta automática depende dos recursos publicados pela própria fonte. Para conjuntos sem API de catálogo ou links diretos identificáveis, configure uma URL de recurso pública e autorizada; não use endpoints de autenticação, exportações privadas ou links presumidos. Os recursos descobertos podem desaparecer ou mudar, portanto valide a mensagem e o resultado da execução antes de usar os CSVs em BI.
+
 ## Relatório de qualidade
 
 ```powershell
