@@ -2,6 +2,7 @@ import json
 import tempfile
 import unittest
 import zipfile
+from unittest.mock import patch
 from pathlib import Path
 
 from src.engine.public_data_pipeline import PublicDataPipeline
@@ -106,6 +107,37 @@ class PublicDataPipelineMvpTests(unittest.TestCase):
         }
         found = discover_resources(source, Session(), 2, lambda url: None)
         self.assertEqual(found, [])
+
+    def test_end_to_end_download_convert_and_history(self):
+        class Response:
+            status_code = 200
+            is_redirect = False
+            headers = {"Content-Type": "text/csv; charset=utf-8", "Content-Length": "29"}
+            def raise_for_status(self):
+                return None
+            def iter_content(self, chunk_size=1024):
+                yield b"codigo;nome\\n00123;Diadema\\n"
+            def close(self):
+                return None
+            def __enter__(self):
+                return self
+            def __exit__(self, *args):
+                return False
+        class Session:
+            headers = {}
+            def get(self, *args, **kwargs):
+                return Response()
+        pipeline = PublicDataPipeline(self.catalog, self.root / "e2e-data", session=Session())
+        with patch("src.engine.public_data_pipeline.validate_public_url"):
+            result = pipeline.run("sample", "https://example.com/dados.csv")
+        self.assertEqual(result.status, "success", result.message)
+        self.assertEqual(len(result.raw_files), 1)
+        self.assertEqual(len(result.processed_files), 1)
+        output = Path(result.processed_files[0])
+        self.assertEqual(output.read_text(encoding="utf-8"), "codigo,nome\\n00123,Diadema\\n")
+        history = pipeline.history()
+        self.assertEqual(len(history), 1)
+        self.assertEqual(history[0]["status"], "success")
 
     def test_catalog_rejects_duplicate_source_ids(self):
         self.catalog.write_text(json.dumps({
