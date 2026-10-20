@@ -249,7 +249,7 @@ class PublicDataPipeline:
                         continue
                     total += member.file_size
                     target = out_dir / (Path(member.filename).name)
-                    with archive.open(member) as inp, tempfile.NamedTemporaryFile(dir=out_dir, delete=False) as tmp:
+                    with archive.open(member) as inp, tempfile.NamedTemporaryFile(dir=out_dir, suffix=Path(member.filename).suffix.lower(), delete=False) as tmp:
                         shutil.copyfileobj(inp, tmp, length=1024 * 1024)
                         temp = Path(tmp.name)
                     extracted.append((temp, target))
