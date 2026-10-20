@@ -1,0 +1,22 @@
+name: Infosiga live collection smoke test
+
+on:
+  push:
+    branches: ["audit/mvp-public-pipeline-20261020"]
+  workflow_dispatch:
+
+jobs:
+  live-infosiga:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install pipeline dependencies
+        run: python -m pip install requests pandas openpyxl
+      - name: Discover, download, convert and validate a real public Infosiga CSV
+        run: python scripts/smoke_infosiga_live.py
