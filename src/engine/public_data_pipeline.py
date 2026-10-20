@@ -248,7 +248,7 @@ class PublicDataPipeline:
                     if Path(member.filename).suffix.lower() not in {".csv", ".txt", ".xlsx", ".xls", ".ods", ".json"}:
                         continue
                     total += member.file_size
-                    target = out_dir / (Path(member.filename).name)
+                    target = out_dir / (Path(member.filename).stem + ".csv")
                     with archive.open(member) as inp, tempfile.NamedTemporaryFile(dir=out_dir, suffix=Path(member.filename).suffix.lower(), delete=False) as tmp:
                         shutil.copyfileobj(inp, tmp, length=1024 * 1024)
                         temp = Path(tmp.name)
