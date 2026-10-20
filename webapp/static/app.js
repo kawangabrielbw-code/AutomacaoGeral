@@ -1,8 +1,9 @@
 const $ = (s, root=document) => root.querySelector(s);
 const $$ = (s, root=document) => [...root.querySelectorAll(s)];
 let csrf = "", sourcePage = 1, sourceFilters = {}, historyPage = 1, activePoll = null;
+let publicDiscoveryResults = [], publicPoll = null;
 const section = document.body.dataset.section;
-const labels = {dashboard:"Dashboard",sources:"Fontes de dados",collections:"Central de coletas",exports:"Google Sheets Central",history:"Histórico de execuções",settings:"Configurações"};
+const labels = {dashboard:"Dashboard",sources:"Fontes de dados",collections:"Central de coletas",exports:"Google Sheets Central",history:"Histórico de execuções",settings:"Configurações","public-data":"Dados públicos"};
 const escapeHtml = value => String(value ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const fmtDate = value => value ? new Intl.DateTimeFormat("pt-BR", {dateStyle:"short",timeStyle:"short",timeZone:"America/Sao_Paulo"}).format(new Date(value)) : "—";
 const fmtNum = value => new Intl.NumberFormat("pt-BR").format(Number(value || 0));
@@ -129,6 +130,61 @@ async function renderSettings() {
   $("#schedule-change").onclick=async()=>{const action=$("#schedule-action").value;if(!await confirmAction("Confirmar alteração no Agendador",`A ação “${action}” será enviada ao Agendador do Windows. O sistema consultará o resultado real.`))return;try{const d=await api("/api/scheduler",{method:"POST",body:JSON.stringify({action,frequency:$("#schedule-frequency").value,time:$("#schedule-time").value,confirm:true})});toast(d.success?"Comando do Agendador concluído.":"O Agendador retornou falha.",d.success?"success":"error");$("#schedule-output").hidden=false;$("#schedule-output").textContent=d.output+"\nEstado após ação: "+d.status.state;}catch(e){toast(e.message,"error");}};
   $("#open-reports").onclick=async event=>{event.preventDefault();try{const d=await api("/api/reports");$("#reports-list").innerHTML=d.items.map(x=>`<button class="link-button report-link" data-report="${escapeHtml(x.name)}">${escapeHtml(x.name)}</button>`).join("");$$('[data-report]').forEach(b=>b.onclick=async()=>{const report=await api(`/api/reports/${encodeURIComponent(b.dataset.report)}`);$("#reports-list").innerHTML=`<h4>${escapeHtml(report.name)}</h4><pre class="code-block report-content">${escapeHtml(report.content)}</pre>`;});}catch(e){toast(e.message,"error");}};
 }
+function renderPublicDiscovery(items) {
+  publicDiscoveryResults = items || [];
+  const groups = publicDiscoveryResults.map(group => {
+    const resources = (group.resources || []).map(resource => `<tr><td><b>${escapeHtml(resource.name || "Recurso")}</b><small>${escapeHtml(resource.format || "")} · ${escapeHtml(resource.source || "descoberta")}</small></td><td class="mono">${escapeHtml(resource.url)}</td><td><button class="button secondary" data-public-collect-url="${escapeHtml(resource.url)}" data-public-collect-source="${escapeHtml(group.source_id)}">Coletar este recurso</button></td></tr>`).join("");
+    return `<article class="panel"><div class="panel-title"><div><h3>${escapeHtml(group.name || group.source_id)}</h3><p>${escapeHtml(group.message || "")}</p></div>${statusPill(group.status)}</div>${resources ? table(["Recurso descoberto","URL pública","Ação"], [resources]) : empty("Nenhum arquivo tabular direto foi descoberto nesta fonte.")}</article>`;
+  }).join("");
+  $("#public-discovery-results").innerHTML = groups || empty("Clique em “Descobrir recursos” para consultar os catálogos oficiais.");
+  $("[data-public-collect-url]").forEach(button => button.onclick = () =>
+    collectPublicData(button.dataset.publicCollectSource, button.dataset.publicCollectUrl).catch(error => toast(error.message, "error")));
+}
+async function discoverPublicData(sourceId=null) {
+  try {
+    const result = await api("/api/public-data/discover", {method:"POST", body:JSON.stringify({source_id:sourceId})});
+    renderPublicDiscovery(result.items || []);
+    toast("Consulta de descoberta concluída. Confira os recursos encontrados antes de coletar.", "success");
+  } catch(error) { toast(error.message, "error"); }
+}
+async function collectPublicData(sourceId, resourceUrl=null) {
+  const job = await api("/api/public-data/collect", {method:"POST", body:JSON.stringify({source_id:sourceId, resource_url:resourceUrl})});
+  $("#public-job-status").innerHTML = `<article class="panel active-job"><span class="spinner"></span><div><b>Coleta de dados públicos</b><p>${escapeHtml(sourceId)} · ${escapeHtml(job.message || job.status)}</p></div></article>`;
+  if(publicPoll) clearInterval(publicPoll);
+  publicPoll = setInterval(async () => {
+    try {
+      const current = await api(`/api/public-data/jobs/${encodeURIComponent(job.id)}`);
+      $("#public-job-status").innerHTML = `<article class="panel"><h3>Resultado da coleta: ${escapeHtml(current.status)}</h3><p>${escapeHtml(current.message || "")}</p>${current.processed_files?.length ? table(["CSV gerados"], current.processed_files.map(path=>`<tr><td class="mono">${escapeHtml(path)}</td></tr>`)) : ""}</article>`;
+      if(!["queued","running"].includes(current.status)) {
+        clearInterval(publicPoll); publicPoll=null;
+        await renderPublicData();
+        toast(current.status==="success" ? "Coleta concluída e registrada no histórico." : "Coleta finalizada; confira a mensagem e o histórico.", current.status==="success" ? "success" : "error");
+      }
+    } catch(error) {
+      clearInterval(publicPoll); publicPoll=null; toast(error.message, "error");
+    }
+  }, 2000);
+}
+async function renderPublicData() {
+  const [catalog, historyData] = await Promise.all([
+    api("/api/public-data/sources"),
+    api("/api/public-data/history?limit=20")
+  ]);
+  const sourceRows = (catalog.items || []).map(source => {
+    const last = source.last_run || {};
+    return `<tr><td><b>${escapeHtml(source.name)}</b><small class="mono">${escapeHtml(source.id)}</small></td><td>${escapeHtml(source.organization || "")}</td><td>${statusPill(source.status || "pendente")}</td><td>${escapeHtml(last.status || "sem execução")}</td><td>${escapeHtml(last.message || source.notes || "")}</td><td><div class="button-row"><button class="button secondary" data-public-discover-source="${escapeHtml(source.id)}">Descobrir</button><button class="button primary" data-public-collect-source="${escapeHtml(source.id)}">Coletar</button></div></td></tr>`;
+  });
+  const historyRows = (historyData.items || []).map(item => `<tr><td>${escapeHtml(item.source_id)}</td><td>${statusPill(item.status)}</td><td>${fmtDate(item.finished_at)}</td><td>${fmtNum(item.bytes_downloaded)} bytes</td><td>${escapeHtml(item.message || "")}</td><td>${escapeHtml((JSON.parse(item.processed_files || "[]") || []).join(", "))}</td></tr>`);
+  $("#page-content").innerHTML = `<div class="section-heading"><div><h2>Coleta de dados públicos</h2><p>Descubra recursos oficiais, converta tabelas para CSV e acompanhe as execuções. A descoberta não baixa os arquivos.</p></div><button class="button primary" id="public-discover-all">Descobrir recursos</button></div>
+  <article class="panel"><p><b>Limite de download desta interface:</b> 512 MB por recurso. Fontes grandes podem exigir seleção de um arquivo menor. A coleta guarda os arquivos brutos e registra os CSVs processados.</p></article>
+  <div id="public-job-status"></div><div id="public-discovery-results"></div>
+  <article class="panel"><div class="panel-title"><div><h3>Catálogo de fontes oficiais</h3><p>${fmtNum((catalog.items||[]).length)} fontes cadastradas. O status não significa que o download já foi testado.</p></div></div>${table(["Fonte","Órgão","Configuração","Última execução","Observações / resultado","Ações"], sourceRows)}</article>
+  <article class="panel"><div class="panel-title"><div><h3>Histórico do pipeline público</h3><p>Últimas tentativas gravadas no SQLite separado do histórico Metabase/Sheets.</p></div></div>${table(["Fonte","Estado","Finalizada","Tamanho","Mensagem","CSV processados"], historyRows)}</article>`;
+  $("#public-discover-all").onclick = () => discoverPublicData().catch(error=>toast(error.message,"error"));
+  $("[data-public-discover-source]").forEach(button => button.onclick = () => discoverPublicData(button.dataset.publicDiscoverSource));
+  $("[data-public-collect-source]").forEach(button => button.onclick = () => collectPublicData(button.dataset.publicCollectSource).catch(error=>toast(error.message,"error")));
+  renderPublicDiscovery(publicDiscoveryResults);
+}
 function shell() {
   $("#page-title").textContent=labels[section]||"OPPES"; $$('[data-nav]').forEach(a=>a.classList.toggle("active",a.dataset.nav===section));
   $("#server-clock").textContent=new Intl.DateTimeFormat("pt-BR",{timeStyle:"short",timeZone:"America/Sao_Paulo"}).format(new Date());
@@ -140,6 +196,7 @@ async function loadPage() {
   const view=$("#page-content"); view.innerHTML='<div class="loading"><span class="spinner"></span> Consultando SQLite e catálogos…</div>';
   try {
     if(section==="dashboard") await renderDashboard();
+    if(section==="public-data") await renderPublicData();
     if(section==="sources") {view.innerHTML=`<div class="section-heading"><div><h2>Catálogo de fontes</h2><p>Busca, filtros e acesso às execuções individuais.</p></div></div><div class="filter-row"><input id="source-search" placeholder="Buscar nome, ID, dashboard ou URL"><select id="source-type"><option value="">Todos os tipos</option><option value="metabase">Metabase</option><option value="sheets">Google Sheets</option></select><select id="source-status"><option value="">Todos os estados</option><option>atualizada</option><option>vencida</option><option>manual</option><option>falha</option><option>pendente</option></select><button class="button secondary" id="apply-source-filter">Filtrar</button></div><div id="source-results"></div><div class="pagination"><span id="source-page-info"></span><button id="source-prev" class="button secondary">Anterior</button><button id="source-next" class="button secondary">Próxima</button></div><dialog id="source-dialog"><div class="dialog-card"><button class="dialog-close" data-close>×</button><div id="source-dialog-content"></div></div></dialog>`;$("#source-dialog [data-close]").onclick=()=>$("#source-dialog").close();$("#apply-source-filter").onclick=()=>renderSources(1).catch(showError);$("#source-prev").onclick=()=>renderSources(sourcePage-1).catch(showError);$("#source-next").onclick=()=>renderSources(sourcePage+1).catch(showError);$("#source-search").onkeydown=e=>{if(e.key==="Enter")renderSources(1).catch(showError);};await renderSources(1); }
     if(section==="collections") await renderCollections();
     if(section==="exports") await renderExports();
