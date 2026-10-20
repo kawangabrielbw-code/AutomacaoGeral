@@ -39,6 +39,17 @@ from src.engine.sheets_harvester import GoogleSheetsHarvester
 
 class TestGoogleSheetsConnector(unittest.TestCase):
 
+    @staticmethod
+    def _mock_csv_response(content, encoding, text):
+        response = MagicMock(spec=requests.Response)
+        response.status_code = 200
+        response.url = "https://docs.google.com/spreadsheets/d/synthetic/export?format=csv&gid=0"
+        response.content = content
+        response.encoding = encoding
+        response.headers = {"Content-Type": f"text/csv; charset={encoding}"}
+        response.text = text
+        return response
+
     def setUp(self):
         self.temp_dir = tempfile.TemporaryDirectory()
         self.output_dir = Path(self.temp_dir.name)
@@ -51,6 +62,12 @@ class TestGoogleSheetsConnector(unittest.TestCase):
 
     def tearDown(self):
         self.temp_dir.cleanup()
+
+    def test_validate_csv_ignores_blank_rows(self):
+        conn = GoogleSheetsConnector("https://docs.google.com/spreadsheets/d/synthetic/edit#gid=0", name="x")
+        headers, rows = conn.validate_csv("a,b\r\n\r\n1,2\r\n\r\n,\r\n3,\r\n")
+        self.assertEqual(headers, ["a", "b"])
+        self.assertEqual(rows, [["1", "2"], ["3", ""]])
 
     def test_01_extract_sheet_id_and_gid(self):
         """Testa a extração de ID e GID de múltiplos formatos de URLs do Google Sheets."""
@@ -100,7 +117,68 @@ class TestGoogleSheetsConnector(unittest.TestCase):
         with open(csv_file, encoding="utf-8") as fp:
             rows = list(csv.reader(fp))
             self.assertEqual(len(rows), 4)  # 1 cabeçalho + 3 linhas
-            self.assertEqual(rows[2][3], "")  # campo nulo mantido vazio, sem zero inventado
+        self.assertEqual(rows[2][3], "")  # campo nulo mantido vazio, sem zero inventado
+
+    def test_verified_source_utf8_bytes_override_incorrect_iso_charset(self):
+        content = "cidade\nDiadema — ação\n".encode("utf-8")
+        response = self._mock_csv_response(
+            content,
+            "ISO-8859-1",
+            content.decode("iso-8859-1"),
+        )
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = response
+        connector = GoogleSheetsConnector("1IbVP_n2rCMDrLiQArlqixhGcuTUL8jqhsskpUVIr-QY", session=session)
+        self.assertEqual(connector.download_csv_content(), "cidade\nDiadema — ação\n")
+
+    def test_utf8_bytes_with_correct_charset_are_preserved(self):
+        text = "ação,população,município,competência\n"
+        content = text.encode("utf-8")
+        response = self._mock_csv_response(content, "utf-8", text)
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = response
+        connector = GoogleSheetsConnector("synthetic_utf8_sheet_id_1234567890", session=session)
+        self.assertEqual(connector.download_csv_content(), text)
+
+    def test_decoded_text_fallback_is_not_decoded_twice(self):
+        text = "ação,população,município,competência\n"
+        response = self._mock_csv_response(None, "ISO-8859-1", text)
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = response
+        connector = GoogleSheetsConnector("synthetic_text_sheet_id_1234567890", session=session)
+        self.assertEqual(connector.download_csv_content(), text)
+
+    def test_bom_and_csv_round_trip_preserve_portuguese_text(self):
+        source_id = "1FRXI-muwyjka7FUK-TG47qJ3dPjJlo-8pIsQDL1a2jw"
+        original_rows = [
+            ["ação", "população", "município", "competência"],
+            ["ação", "população", "Diadema", "2026-10"],
+        ]
+        from io import StringIO
+        stream = StringIO(newline="")
+        csv.writer(stream).writerows(original_rows)
+        content = b"\xef\xbb\xbf" + stream.getvalue().encode("utf-8")
+        response = self._mock_csv_response(content, "ISO-8859-1", content.decode("iso-8859-1"))
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = response
+        connector = GoogleSheetsConnector(source_id, session=session)
+
+        csv_text = connector.download_csv_content()
+        self.assertFalse(csv_text.startswith("\ufeff"))
+        output = connector.export_safe(self.output_dir / "acentos.csv", csv_text)
+        with output.open(encoding="utf-8", newline="") as file:
+            self.assertEqual(list(csv.reader(file)), original_rows)
+
+    def test_other_source_respects_declared_latin1_charset(self):
+        # Esses bytes também formam uma sequência UTF-8 válida. A fonte não
+        # verificada deve preservar a interpretação indicada pelo HTTP.
+        text = "rótulo: Ã©\n"
+        content = text.encode("iso-8859-1")
+        response = self._mock_csv_response(content, "ISO-8859-1", text)
+        session = MagicMock(spec=requests.Session)
+        session.get.return_value = response
+        connector = GoogleSheetsConnector("synthetic_other_sheet_id_123456", session=session)
+        self.assertEqual(connector.download_csv_content(), text)
 
     def test_03_download_empty_csv(self):
         """Testa planilha válida contendo apenas cabeçalho e zero linhas de dados."""

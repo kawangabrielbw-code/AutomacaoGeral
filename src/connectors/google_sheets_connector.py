@@ -10,10 +10,12 @@ e escrita atômica segura.
 from __future__ import annotations
 
 import csv
+import hashlib
 import io
 import json
 import logging
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
@@ -81,6 +83,13 @@ class GoogleSheetsConnector:
     """Conector para download, validação e catalogação de planilhas públicas do Google Sheets."""
 
     EXPORT_URL_TEMPLATE = "https://docs.google.com/spreadsheets/d/{sheet_id}/export?format=csv&gid={gid}"
+
+    # Leituras verificadas no diagnóstico mostraram bytes UTF-8 apesar do
+    # charset ISO-8859-1 declarado para estes dois CSVs do Google Sheets.
+    UTF8_EXPORT_SHEET_IDS = frozenset({
+        "1IbVP_n2rCMDrLiQArlqixhGcuTUL8jqhsskpUVIr-QY",  # acidentes_transito
+        "1FRXI-muwyjka7FUK-TG47qJ3dPjJlo-8pIsQDL1a2jw",  # saude_atencao_basica_sisab
+    })
 
     def __init__(
         self,
@@ -180,6 +189,24 @@ class GoogleSheetsConnector:
                         f"Resposta inesperada em formato HTML recebida para '{self.name}'."
                     )
 
+                content = getattr(response, "content", None)
+                if isinstance(content, bytes):
+                    declared_encoding = (getattr(response, "encoding", None) or "").lower().replace("_", "-")
+                    # Google Sheets declara ISO-8859-1 para estes CSVs, mas os
+                    # bytes observados nas fontes verificadas são UTF-8.
+                    if self.sheet_id in self.UTF8_EXPORT_SHEET_IDS:
+                        try:
+                            return content.decode("utf-8-sig")
+                        except UnicodeDecodeError:
+                            # Se o formato da resposta mudar, preserva o fallback
+                            # definido pelo charset HTTP em vez de perder a coleta.
+                            return response.text
+                    # Para as demais fontes, respeita o charset do endpoint.
+                    # A decodificação explícita também remove BOM quando UTF-8
+                    # está declarado corretamente.
+                    if declared_encoding in {"utf-8", "utf8", "utf-8-sig"}:
+                        return content.decode("utf-8-sig")
+                    return response.text
                 return response.text
 
             except requests.exceptions.Timeout as err:
@@ -218,7 +245,9 @@ class GoogleSheetsConnector:
         if not any(headers):
             raise GoogleSheetsValidationError("Linha de cabeçalho inválida ou vazia.")
 
-        rows = reader[1:]
+        # Linhas totalmente vazias (presentes na origem) não são registros:
+        # ignoradas na contagem/validação; o CSV bruto gravado não é alterado.
+        rows = [r for r in reader[1:] if any(str(c).strip() for c in r)]
         return headers, rows
 
     def export_safe(self, output_file: str | Path, csv_text: str) -> Path:
@@ -231,8 +260,16 @@ class GoogleSheetsConnector:
         temp_path = target_path.parent / f".tmp_{target_path.name}"
 
         try:
-            temp_path.write_text(csv_text, encoding="utf-8")
+            # Preserva as quebras de linha do CSV em Windows e Unix.
+            with temp_path.open("w", encoding="utf-8", newline="") as temp_file:
+                temp_file.write(csv_text)
             if target_path.exists():
+                previous_hash = hashlib.sha256(target_path.read_bytes()).hexdigest()
+                version_dir = Path("data/history/versions")
+                version_dir.mkdir(parents=True, exist_ok=True)
+                version = version_dir / f"{target_path.stem}_{previous_hash[:12]}.csv"
+                if not version.exists():
+                    shutil.copy2(target_path, version)
                 target_path.unlink()
             temp_path.rename(target_path)
             return target_path

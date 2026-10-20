@@ -49,7 +49,7 @@ class DataQualityChecker:
                     return {"existe": True, "vazio": True, "linhas": 0, "colunas": 0}
 
                 headers = reader[0]
-                rows = reader[1:]
+                rows = [r for r in reader[1:] if any(c.strip() for c in r)]
 
                 # Estatísticas por coluna
                 col_stats = {}
