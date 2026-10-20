@@ -5,6 +5,7 @@ import zipfile
 from pathlib import Path
 
 from src.engine.public_data_pipeline import PublicDataPipeline
+from src.engine.public_data_discovery import discover_resources
 
 
 class PublicDataPipelineMvpTests(unittest.TestCase):
@@ -53,6 +54,57 @@ class PublicDataPipelineMvpTests(unittest.TestCase):
             f"Todos os resultados devem ser CSV; extensões geradas: {[p.name for p in outputs]}",
         )
         self.assertEqual(outputs[0].read_text(encoding="utf-8"), "codigo,nome\n00123,Diadema\n")
+
+
+    def test_ckan_discovery_returns_supported_public_resource(self):
+        class Response:
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {"success": True, "result": {"resources": [
+                    {"id": "1", "name": "Dicionário de dados", "format": "ZIP",
+                     "url": "https://dados.example.gov.br/dictionary.zip"},
+                    {"id": "2", "name": "Eventos de Sinistro", "format": "ZIP",
+                     "url": "https://dados.example.gov.br/eventos.zip"},
+                    {"id": "3", "name": "Página HTML", "format": "HTML",
+                     "url": "https://dados.example.gov.br/page.html"}
+                ]}}
+        class Session:
+            def get(self, *args, **kwargs):
+                return Response()
+        source = {
+            "url": "https://infosiga.example.gov.br/",
+            "allowed_hosts": ["dados.example.gov.br"],
+            "discovery": {
+                "ckan_api_base": "https://dados.example.gov.br",
+                "package_id": "sinistros",
+                "resource_name_contains": "eventos"
+            }
+        }
+        found = discover_resources(source, Session(), 2, lambda url: None)
+        self.assertEqual(len(found), 1)
+        self.assertEqual(found[0]["name"], "Eventos de Sinistro")
+        self.assertEqual(found[0]["url"], "https://dados.example.gov.br/eventos.zip")
+
+    def test_discovery_rejects_resource_on_unlisted_host(self):
+        class Response:
+            def raise_for_status(self):
+                return None
+            def json(self):
+                return {"success": True, "result": {"resources": [
+                    {"id": "1", "name": "Eventos", "format": "CSV",
+                     "url": "https://unknown.example.net/events.csv"}
+                ]}}
+        class Session:
+            def get(self, *args, **kwargs):
+                return Response()
+        source = {
+            "url": "https://infosiga.example.gov.br/",
+            "allowed_hosts": ["dados.example.gov.br"],
+            "discovery": {"ckan_api_base": "https://dados.example.gov.br", "package_id": "sinistros"}
+        }
+        found = discover_resources(source, Session(), 2, lambda url: None)
+        self.assertEqual(found, [])
 
     def test_catalog_rejects_duplicate_source_ids(self):
         self.catalog.write_text(json.dumps({
