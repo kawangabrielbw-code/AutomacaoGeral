@@ -121,3 +121,30 @@ py -m pip install -r requirements.txt
 No Google Cloud, selecione ou crie um projeto, habilite Google Sheets API, crie a conta de servico e baixe a chave JSON. Compartilhe a planilha de destino com o `client_email` como editora. No painel, abra Google Sheets Central, teste a conexao e exporte fontes escolhidas. Exportar todas exige confirmacao. Nada e exportado ao iniciar o sistema.
 
 Cada fonte recebe uma aba de nome seguro com hash estavel do identificador; cards Metabase usam `dashboard_uuid:card_id`. `Controle_OPPES` registra fonte, aba e resultados. Os dados novos vao primeiro para uma aba temporaria; uma operacao `batchUpdate` troca a aba so depois do preparo. Valores sao enviados em `RAW`, em lotes, e nao executam formulas. O limite e 10 milhoes de celulas por aba; o sistema nao trunca dados. A conexao apenas confirma leitura; permissao de escrita requer uma exportacao real controlada. Sem credenciais, o painel permanece utilizavel e explica como configurar a integracao.
+
+
+## Catálogo de fontes públicas oficiais (MVP)
+
+O catálogo adicional `config/public_data_sources.json` registra as 15 fontes oficiais/referências solicitadas sem duplicar IPVS ou Receita Tributária. Uma página de apresentação não é tratada automaticamente como arquivo de dados: fontes sem recurso direto permanecem `limited` ou `pending`, até que a URL de exportação/API seja identificada. O painel Power BI é apenas uma referência; não há extração presumida do modelo semântico.
+
+O novo pipeline é aditivo e não substitui o coletor Metabase/Google Sheets nem as rotas web existentes. Usa o histórico SQLite separado `data/history/public_sources.sqlite3`, guarda os downloads em `data/raw/<source_id>/` e CSVs em `data/processed/<source_id>/`. Arquivos originais são preservados; CSVs são escritos atomicamente; ZIPs têm proteção contra caminhos de extração e limite de tamanho configurável.
+
+### Comandos (PowerShell)
+
+```powershell
+# Listar fontes e último resultado
+py scripts/coletar_fontes_publicas.py list
+
+# Histórico do pipeline público
+py scripts/coletar_fontes_publicas.py history --limit 20
+
+# Coletar somente quando já tiver confirmado a URL DIRETA e pública do recurso
+py scripts/coletar_fontes_publicas.py collect infosiga_detran_sp --url "https://HOST-OFICIAL/arquivo.csv"
+
+# Limitar download a 200 MiB e timeout de 20 segundos
+py scripts/coletar_fontes_publicas.py --timeout 20 --max-download-mb 200 collect ID_DA_FONTE --url "https://HOST-OFICIAL/arquivo.zip"
+```
+
+A URL de exemplo acima é ilustrativa e não deve ser executada literalmente. Configure sempre a URL oficial real após confirmar que o recurso é público e permitido. O pipeline não contorna login/CAPTCHA. Dependências principais já existentes no projeto: `requests`, `pandas` e `openpyxl`; formatos XLS/ODS exigem os leitores correspondentes instalados. O pipeline registra sucesso/falha real no próprio SQLite e retorna código diferente de zero em falha.
+
+**Limitações atuais:** descoberta automática de recursos CKAN e API genérica por página ainda não está ativada; para cada fonte, é necessário configurar `resource_url` ou passar `--url` depois de identificar o recurso direto. A lista de catálogo é um inventário inicial, não uma declaração de conectores validados. Arquivos JSON tabulares usam pandas; CSV/TXT preservam campos como texto. A execução em lotes de planilhas gigantes e a integração desse catálogo novo à interface web são etapas posteriores; as rotas atuais não foram alteradas nesta mudança.
