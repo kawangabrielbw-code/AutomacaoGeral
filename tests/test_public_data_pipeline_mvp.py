@@ -112,11 +112,11 @@ class PublicDataPipelineMvpTests(unittest.TestCase):
         class Response:
             status_code = 200
             is_redirect = False
-            headers = {"Content-Type": "text/csv; charset=utf-8", "Content-Length": "29"}
+            headers = {"Content-Type": "text/csv; charset=utf-8", "Content-Length": "26"}
             def raise_for_status(self):
                 return None
             def iter_content(self, chunk_size=1024):
-                yield b"codigo;nome\\n00123;Diadema\\n"
+                yield b"codigo;nome\n00123;Diadema\n"
             def close(self):
                 return None
             def __enter__(self):
@@ -134,7 +134,7 @@ class PublicDataPipelineMvpTests(unittest.TestCase):
         self.assertEqual(len(result.raw_files), 1)
         self.assertEqual(len(result.processed_files), 1)
         output = Path(result.processed_files[0])
-        self.assertEqual(output.read_text(encoding="utf-8"), "codigo,nome\\n00123,Diadema\\n")
+        self.assertEqual(output.read_text(encoding="utf-8"), "codigo,nome\n00123,Diadema\n")
         history = pipeline.history()
         self.assertEqual(len(history), 1)
         self.assertEqual(history[0]["status"], "success")
