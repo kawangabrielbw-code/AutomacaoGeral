@@ -73,7 +73,7 @@ def discover_resources(source: dict[str, Any], session: requests.Session, timeou
         return results
     validate_url(landing_url)
     response = session.get(landing_url, timeout=(timeout, timeout), allow_redirects=False)
-    if response.is_redirect:
+    if getattr(response, "is_redirect", False):
         raise ValueError("A página de origem redirecionou; configure a URL oficial final para descoberta.")
     response.raise_for_status()
     parser = _Links()
